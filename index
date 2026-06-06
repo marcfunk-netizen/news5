@@ -1,0 +1,362 @@
+Skip to content
+marcfunk-netizen
+News3
+Repository navigation
+Code
+Issues
+Pull requests
+Agents
+Actions
+Projects
+Wiki
+Security and quality
+Insights
+Settings
+Commit b209c60
+marcfunk-netizen
+marcfunk-netizen
+authored
+2 hours ago
+·
+·
+Verified
+Add files via upload
+main
+0 parents  commit 
+b209c60
+5 files changed
+
++315
+Lines changed: 315 additions & 0 deletions
+File tree
+Filter files…
+README.md
+index.html
+package.json
+refresh.js
+vercel.json
+Search within code
+ 
+‎README.md‎
++47
+Lines changed: 47 additions & 0 deletions
+
+
+Original file line number	Diff line number	Diff line change
+@@ -0,0 +1,47 @@
+# Marbio News — Déploiement Vercel
+## Structure
+```
+marbio-news/
+├── api/
+│   └── refresh.js      ← endpoint Tavily (appelé par le cron + le frontend)
+├── public/
+│   └── index.html      ← le site
+├── vercel.json         ← config cron 7h00 UTC
+└── package.json
+```
+## Déploiement (10 minutes)
+### 1. Mettre le projet sur GitHub
+- Crée un repo GitHub (github.com → New repository)
+- Upload les fichiers ou utilise Git
+### 2. Connecter à Vercel
+- Va sur vercel.com → New Project
+- Importe ton repo GitHub
+- Framework Preset : **Other**
+- Root Directory : laisser vide
+- Clique **Deploy**
+### 3. Ajouter les clés API (IMPORTANT)
+Dans Vercel → ton projet → Settings → Environment Variables :
+| Name | Value |
+|------|-------|
+| `TAVILY_API_KEY` | ta clé Tavily (app.tavily.com) |
+Clique **Save** puis **Redeploy**.
+### 4. Vérifier le cron
+- Vercel → ton projet → Settings → Crons
+- Tu verras `/api/refresh` schedulé à `0 7 * * *` (7h00 UTC = 8h00 Suisse été / 7h00 hiver)
+## Utilisation
+- Le site charge automatiquement les news au démarrage
+- Le cron actualise toutes les catégories chaque matin à 7h
+- Les résultats sont mis en cache 1 heure (s-maxage=3600)
+## Coût estimé
+- Vercel Hobby : gratuit
+- Tavily : ~6 recherches/jour × 30 = 180 req/mois (gratuit sous 1000/mois)
+‎index.html‎
++195
+Lines changed: 195 additions & 0 deletions
+Original file line number	Diff line number	Diff line change
+@@ -0,0 +1,195 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Marbio News</title>
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>🧬</text></svg>">
+<link href="https://fonts.googleapis.com/css2?family=DM+Sans:opsz,wght@9..40,300;9..40,400;9..40,500;9..40,600;9..40,700&family=Source+Serif+4:opsz,wght@8..60,400;8..60,600;8..60,700&display=swap" rel="stylesheet">
+<style>
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:'DM Sans',system-ui,sans-serif;background:linear-gradient(168deg,#F0F6FC 0%,#E8F0FE 35%,#F7F9FC 100%);min-height:100vh;color:#0A1929}
+.header{background:linear-gradient(135deg,#001F3D 0%,#003366 40%,#00538A 100%);padding:26px 20px 20px}
+.header-inner{max-width:840px;margin:0 auto}
+.logo-row{display:flex;align-items:center;gap:14px;margin-bottom:16px}
+.logo-icon{width:46px;height:46px;border-radius:13px;background:rgba(255,255,255,0.1);display:flex;align-items:center;justify-content:center;font-size:24px;border:1px solid rgba(255,255,255,0.12)}
+.logo-title{font-family:'Source Serif 4',serif;font-size:28px;font-weight:700;color:#fff;letter-spacing:-0.5px}
+.logo-sub{font-size:11px;color:rgba(255,255,255,0.5);letter-spacing:1.8px;text-transform:uppercase;margin-top:2px}
+.status-bar{font-size:12px;color:rgba(255,255,255,0.5);margin-top:4px;display:flex;align-items:center;gap:8px}
+.dot{width:7px;height:7px;border-radius:50%;background:#22c55e;flex-shrink:0}
+.dot.loading{background:#f59e0b;animation:pulse 1s ease-in-out infinite}
+.dot.error{background:#ef4444}
+.main{max-width:840px;margin:0 auto;padding:18px 16px 60px}
+.cats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px}
+.cat{padding:13px;border-radius:14px;border:1px solid rgba(0,40,80,0.07);background:#fff;cursor:pointer;text-align:left;transition:all .2s;box-shadow:0 1px 4px rgba(0,40,80,0.04)}
+.cat:hover{box-shadow:0 4px 12px rgba(0,105,180,0.1);transform:translateY(-1px)}
+.cat.active{border:2px solid #0069B4;background:linear-gradient(135deg,#0069B4,#00538A);color:#fff;box-shadow:0 6px 20px rgba(0,105,180,0.2)}
+.cat-icon{font-size:20px;margin-bottom:4px}
+.cat-label{font-size:12px;font-weight:650;line-height:1.3;color:#0A1929}
+.cat.active .cat-label,.cat.active .cat-desc{color:#fff}
+.cat-desc{font-size:10px;color:#7A8A9E;margin-top:2px}
+.cat.active .cat-desc{opacity:.8}
+.articles{display:flex;flex-direction:column;gap:12px}
+.card{background:#fff;border-radius:16px;border:1px solid rgba(0,40,80,0.07);padding:20px 22px;transition:all .2s;animation:fadeIn .35s ease both}
+.card:hover{border-color:rgba(0,105,180,0.2);transform:translateY(-1px);box-shadow:0 8px 24px rgba(0,105,180,0.07)}
+.card-inner{display:flex;gap:12px;align-items:flex-start}
+.bar{width:5px;min-height:48px;border-radius:3px;flex-shrink:0;margin-top:3px;opacity:.8}
+.card-body{flex:1;min-width:0}
+.card-title{font-family:'Source Serif 4',serif;font-size:15px;font-weight:650;line-height:1.45;color:#0A1929;text-decoration:none;display:block;margin-bottom:9px}
+.card-title:hover{color:#0069B4}
+.card-content{font-size:13px;line-height:1.7;color:#3A4D62;margin-bottom:12px;display:-webkit-box;-webkit-line-clamp:3;-webkit-box-orient:vertical;overflow:hidden}
+.card-content.expanded{display:block}
+.card-meta{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.src{font-size:10.5px;font-weight:600;padding:3px 9px;border-radius:6px}
+.date{font-size:11px;color:#8A9BB0}
+.more-btn{font-size:10.5px;border:1px solid rgba(0,105,180,0.15);border-radius:6px;padding:2px 9px;background:none;color:#0069B4;cursor:pointer;margin-left:auto;font-family:inherit}
+.more-btn:hover{background:rgba(0,105,180,0.05)}
+.sk{background:linear-gradient(90deg,#f0f4f8 25%,#e8eef4 50%,#f0f4f8 75%);border-radius:16px;animation:shimmer 1.5s ease-in-out infinite}
+.empty{text-align:center;padding:50px 0;color:#7A8A9E;font-size:14px}
+.footer{text-align:center;font-size:11px;color:#9AB0C6;margin-top:40px;line-height:2}
+@keyframes fadeIn{from{opacity:0;transform:translateY(10px)}to{opacity:1;transform:translateY(0)}}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.3}}
+@keyframes shimmer{0%,100%{opacity:.7}50%{opacity:1}}
+@media(max-width:600px){.cats{grid-template-columns:repeat(2,1fr)}}
+</style>
+</head>
+<body>
+<header class="header">
+  <div class="header-inner">
+    <div class="logo-row">
+      <div class="logo-icon">🧬</div>
+      <div>
+        <div class="logo-title">Marbio News</div>
+        <div class="logo-sub">Veille Vaccins · Santé · Afrique · Maroc · Monde</div>
+      </div>
+    </div>
+    <div class="status-bar">
+      <span class="dot loading" id="dot"></span>
+      <span id="status-text">Chargement des actualités...</span>
+    </div>
+  </div>
+</header>
+<main class="main">
+  <div class="cats" id="cats"></div>
+  <div class="articles" id="articles">
+    <div class="sk" style="height:90px"></div>
+    <div class="sk" style="height:70px"></div>
+    <div class="sk" style="height:110px"></div>
+  </div>
+  <footer class="footer">
+    <strong>Marbio News</strong> · Veille automatique via Tavily · Actualisé chaque jour à 7h00
+  </footer>
+</main>
+<script>
+const CATS = [
+  {id:"african-cdc",   label:"Africa CDC",                  icon:"🌍", desc:"Publications et communiqués"},
+  {id:"ama",           label:"Agence Médicament Afrique",    icon:"💊", desc:"Actualités AMA réglementaires"},
+  {id:"manufacture",   label:"Manufacture Vaccins Afrique",  icon:"🏭", desc:"Production vaccins biologiques"},
+  {id:"unicef-gavi",   label:"UNICEF & GAVI",                icon:"💉", desc:"Campagnes immunisation"},
+  {id:"sante-maroc",   label:"Santé Maroc",                  icon:"🇲🇦", desc:"Système de soins marocain"},
+  {id:"vaccins-monde", label:"Vaccins dans le Monde",        icon:"🌐", desc:"Actualités mondiales"},
+];
+let active = "african-cdc";
+let allData = {};
+function srcColor(url) {
+  try {
+    const h = new URL(url).hostname;
+    if (h.includes("africacdc") || h.includes("au.int")) return "#1B8C3A";
+    if (h.includes("who.int"))   return "#0093D5";
+    if (h.includes("unicef"))    return "#00AEEF";
+    if (h.includes("gavi"))      return "#E8702A";
+    if (h.includes(".ma") || h.includes("maroc")) return "#C1272D";
+    if (h.includes("nature.com")) return "#B5232D";
+  } catch(e) {}
+  return "#0069B4";
+}
+function domain(url) {
+  try { return new URL(url).hostname.replace("www.", ""); } catch(e) { return "source"; }
+}
+function fmtDate(d) {
+  if (!d) return "";
+  try {
+    const dt = new Date(d);
+    if (isNaN(dt)) return d;
+    return dt.toLocaleDateString("fr-FR", {day:"numeric", month:"short", year:"numeric"});
+  } catch(e) { return d; }
+}
+function setStatus(msg, state) {
+  document.getElementById("status-text").textContent = msg;
+  const dot = document.getElementById("dot");
+  dot.className = "dot" + (state === "loading" ? " loading" : state === "error" ? " error" : "");
+}
+function renderCats() {
+  document.getElementById("cats").innerHTML = CATS.map(c =>
+    `<button class="cat${active === c.id ? " active" : ""}" data-id="${c.id}">
+      <div class="cat-icon">${c.icon}</div>
+      <div class="cat-label">${c.label}</div>
+      <div class="cat-desc">${c.desc}</div>
+    </button>`
+  ).join("");
+  document.querySelectorAll(".cat").forEach(b =>
+    b.addEventListener("click", () => { active = b.dataset.id; renderCats(); renderArticles(); })
+  );
+}
+function renderArticles() {
+  const el = document.getElementById("articles");
+  const articles = allData[active] || [];
+  if (!articles.length) {
+    el.innerHTML = '<div class="empty">Aucun article disponible.</div>';
+    return;
+  }
+  el.innerHTML = articles.map((a, i) => {
+    const color = srcColor(a.url || "");
+    return `<div class="card" style="animation-delay:${i * 0.05}s">
+      <div class="card-inner">
+        <div class="bar" style="background:${color}"></div>
+        <div class="card-body">
+          <a href="${a.url || '#'}" target="_blank" rel="noopener" class="card-title">${a.title || "Sans titre"}</a>
+          <div class="card-content" id="cc-${i}">${a.content || ""}</div>
+          <div class="card-meta">
+            <span class="src" style="background:${color}18;color:${color}">${domain(a.url || "")}</span>
+            ${a.date ? `<span class="date">${fmtDate(a.date)}</span>` : ""}
+            <button class="more-btn" data-i="${i}">Lire plus</button>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  }).join("");
+  document.querySelectorAll(".more-btn").forEach(b =>
+    b.addEventListener("click", () => {
+      const cc = document.getElementById("cc-" + b.dataset.i);
+      b.textContent = cc.classList.toggle("expanded") ? "Réduire" : "Lire plus";
+    })
+  );
+}
+async function loadAll() {
+  setStatus("Chargement des actualités...", "loading");
+  try {
+    const resp = await fetch("/api/refresh");
+    if (!resp.ok) throw new Error(`Erreur ${resp.status}`);
+    allData = await resp.json();
+    renderArticles();
+    const now = new Date().toLocaleTimeString("fr-FR", {hour:"2-digit", minute:"2-digit"});
+    setStatus(`Actualisé à ${now}`, "ok");
+  } catch(e) {
+    setStatus("Erreur de chargement — " + e.message, "error");
+    document.getElementById("articles").innerHTML =
+      '<div class="empty">Impossible de charger les actualités.<br>Vérifiez votre connexion ou revenez plus tard.</div>';
+  }
+}
+renderCats();
+loadAll();
+</script>
+</body>
+</html>
+‎package.json‎
++5
+Lines changed: 5 additions & 0 deletions
+Original file line number	Diff line number	Diff line change
+@@ -0,0 +1,5 @@
+{
+  "name": "marbio-news",
+  "version": "1.0.0",
+  "private": true
+}
+‎refresh.js‎
++60
+Lines changed: 60 additions & 0 deletions
+Original file line number	Diff line number	Diff line change
+@@ -0,0 +1,60 @@
+const CATEGORIES = [
+  { id: "african-cdc",     query: "Africa CDC African Union disease control health outbreak news 2026" },
+  { id: "ama",             query: "African Medicines Agency AMA pharmaceutical regulation Africa news 2026" },
+  { id: "manufacture",     query: "vaccine manufacturing Africa biologics local production AVMI news 2026" },
+  { id: "unicef-gavi",     query: "UNICEF GAVI vaccines immunization Africa campaign news 2026" },
+  { id: "sante-maroc",     query: "santé Maroc actualités système santé publique réformes 2026" },
+  { id: "vaccins-monde",   query: "vaccines world WHO immunization news outbreak 2026" },
+];
+async function searchTavily(query, apiKey) {
+  const resp = await fetch("https://api.tavily.com/search", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      api_key: apiKey,
+      query,
+      search_depth: "advanced",
+      max_results: 6,
+      include_answer: false,
+    }),
+  });
+  if (!resp.ok) throw new Error(`Tavily error: ${resp.status}`);
+  const data = await resp.json();
+  return (data.results || []).map((r) => ({
+    title:   r.title || "Sans titre",
+    url:     r.url   || "#",
+    content: (r.content || r.raw_content || "").slice(0, 500),
+    date:    r.published_date || null,
+  }));
+}
+export default async function handler(req, res) {
+  res.setHeader("Access-Control-Allow-Origin", "*");
+  res.setHeader("Access-Control-Allow-Methods", "GET, OPTIONS");
+  if (req.method === "OPTIONS") return res.status(200).end();
+  const TAVILY_KEY = process.env.TAVILY_API_KEY;
+  if (!TAVILY_KEY) return res.status(500).json({ error: "TAVILY_API_KEY not set" });
+  const catId = req.query.cat;
+  const cat = catId ? CATEGORIES.find((c) => c.id === catId) : null;
+  const targets = cat ? [cat] : CATEGORIES;
+  try {
+    const results = {};
+    await Promise.all(
+      targets.map(async (c) => {
+        try {
+          results[c.id] = await searchTavily(c.query, TAVILY_KEY);
+        } catch (e) {
+          results[c.id] = [];
+        }
+      })
+    );
+    res.setHeader("Cache-Control", "s-maxage=3600, stale-while-revalidate");
+    return res.status(200).json(results);
+  } catch (e) {
+    return res.status(500).json({ error: e.message });
+  }
+}
+‎vercel.json‎
++8
+Lines changed: 8 additions & 0 deletions
+Original file line number	Diff line number	Diff line change
+@@ -0,0 +1,8 @@
+{
+  "crons": [
+    {
+      "path": "/api/refresh",
+      "schedule": "0 7 * * *"
+    }
+  ]
+}
+0 commit comments
+Comments
+0
+ (0)
+Comment
+You're not receiving notifications from this thread.
+
